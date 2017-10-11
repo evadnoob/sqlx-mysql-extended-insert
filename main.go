@@ -8,6 +8,7 @@ import (
 	"github.com/evadnoob/sqlx-mysql-extended-insert/logging"
 	"github.com/jmoiron/sqlx"
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 
 	_ "github.com/go-sql-driver/mysql"
 )
@@ -67,7 +68,10 @@ var setupCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 
 		Connect()
-		result, err := DB.Exec(`create table t1(c1 binary(16), c2 varchar(100));`)
+		result, err := DB.Exec(`create table t1(c1 int unsigned not null auto_increment primary key,
+       c2 binary(16), 
+       c3 varchar(100));`)
+
 		if err != nil {
 			panic(err)
 		}
@@ -88,7 +92,7 @@ var cleanupCmd = &cobra.Command{
 		if err != nil {
 			panic(err)
 		}
-		log.Infof("created table %v", result)
+		log.Infof("drop table %v", result)
 
 		return nil
 	},
@@ -101,7 +105,7 @@ var test1Cmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 
 		Connect()
-		result, err := DB.Exec(`insert into t1(c1, c2)  values(unhex(replace(uuid(), '-', '')), 'test1'), (unhex(replace(uuid(), '-', '')), 'test2')`)
+		result, err := DB.Exec(`insert into t1(c2, c3)  values(unhex(replace(uuid(), '-', '')), 'test1'), (unhex(replace(uuid(), '-', '')), 'test2')`)
 		if err != nil {
 			panic(err)
 		}
@@ -112,8 +116,58 @@ var test1Cmd = &cobra.Command{
 	},
 }
 
+var test2Cmd = &cobra.Command{
+	Use:   "test2",
+	Short: "",
+	Long:  ``,
+	Run: func(cmd *cobra.Command, args []string) {
+
+		Connect()
+
+		for i := 0; i < 1000; i++ {
+			result := DB.MustExec(`insert into t1(c2, c3)  values(unhex(replace(uuid(), '-', '')), 'test1'), (unhex(replace(uuid(), '-', '')), 'test2')`)
+			log.Infof("inserted rowsAffected: %d, id: %d", result.RowsAffected, result.LastInsertId)
+		}
+
+		x := make(chan interface{}, 10)
+		go func() {
+			for {
+				select {
+				case blah := <-x:
+					log.Infof("blah: %+v, %T, %d", blah, blah, blah)
+				default:
+					break
+				}
+			}
+
+		}()
+
+		rows, err := DB.Query(`select * from t1`)
+		if err != nil {
+			panic(err)
+		}
+
+		defer rows.Close()
+
+		for rows.Next() {
+			var id interface{}
+			var uuid []byte
+			var c3 string
+
+			err = rows.Scan(&id, &uuid, &c3)
+			if err != nil {
+				panic(err)
+			}
+			x <- id
+		}
+	},
+}
+
 func init() {
 	RootCmd.AddCommand(setupCmd)
 	RootCmd.AddCommand(cleanupCmd)
 	RootCmd.AddCommand(test1Cmd)
+	RootCmd.AddCommand(test2Cmd)
+
+	viper.RegisterAlias("reset", "cleanup")
 }
