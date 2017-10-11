@@ -101,7 +101,7 @@ var test1Cmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 
 		Connect()
-		result, err := DB.Exec(`insert into t1(?)  values(unhex(replace(uuid(), '-', '')), 'test1'), (unhex(replace(uuid(), '-', '')), 'test2')`)
+		result, err := DB.Exec(`insert into t1(c1, c2)  values(unhex(replace(uuid(), '-', '')), 'test1'), (unhex(replace(uuid(), '-', '')), 'test2')`)
 		if err != nil {
 			panic(err)
 		}
