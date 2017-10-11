@@ -126,7 +126,17 @@ var test2Cmd = &cobra.Command{
 
 		for i := 0; i < 1000; i++ {
 			result := DB.MustExec(`insert into t1(c2, c3)  values(unhex(replace(uuid(), '-', '')), 'test1'), (unhex(replace(uuid(), '-', '')), 'test2')`)
-			log.Infof("inserted rowsAffected: %d, id: %d", result.RowsAffected, result.LastInsertId)
+			rowsAffected, err := result.RowsAffected()
+			if err != nil {
+				log.Warnf("error getting rows affected: %v", err)
+			}
+
+			lastInsertId, err := result.LastInsertId()
+			if err != nil {
+				log.Warnf("error getting lastInsertId : %v", err)
+			}
+
+			log.Infof("inserted rowsAffected: %d, id: %d", rowsAffected, lastInsertId)
 		}
 
 		x := make(chan interface{}, 10)
