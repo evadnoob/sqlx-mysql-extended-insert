@@ -23,7 +23,7 @@ func main() {
 	}
 }
 
-//Connect to database and s3
+//Connect to database
 func Connect() {
 	type MysqlConfig struct {
 		MysqlPassword string `env:"MYSQL_PASSWORD,required"`
@@ -56,7 +56,7 @@ func Connect() {
 }
 
 var RootCmd = &cobra.Command{
-	Use:   "insert",
+	Use:   "sqlx-mysql-extended-insert",
 	Short: "",
 	Long:  ``,
 }
@@ -83,7 +83,7 @@ var setupCmd = &cobra.Command{
 
 var cleanupCmd = &cobra.Command{
 	Use:   "cleanup",
-	Short: "",
+	Short: "remove the table created by the setup command",
 	Long:  ``,
 	RunE: func(cmd *cobra.Command, args []string) error {
 
@@ -124,7 +124,7 @@ var test2Cmd = &cobra.Command{
 
 		Connect()
 
-		for i := 0; i < 1000; i++ {
+		for i := 0; i < 10; i++ {
 			result := DB.MustExec(`insert into t1(c2, c3)  values(unhex(replace(uuid(), '-', '')), 'test1'), (unhex(replace(uuid(), '-', '')), 'test2')`)
 			rowsAffected, err := result.RowsAffected()
 			if err != nil {
@@ -144,7 +144,7 @@ var test2Cmd = &cobra.Command{
 			for {
 				select {
 				case blah := <-x:
-					log.Infof("blah: %+v, %T, %d", blah, blah, blah)
+					log.Infof("blah: %+v, %T", blah, blah)
 				default:
 					break
 				}
@@ -152,26 +152,94 @@ var test2Cmd = &cobra.Command{
 
 		}()
 
-		rows, err := DB.Query(`select * from t1`)
+		rows, err := DB.Queryx("select * from t1")
 		if err != nil {
 			panic(err)
 		}
 
 		defer rows.Close()
 
+		coltypes, err := rows.ColumnTypes()
 		for rows.Next() {
-			var id interface{}
-			var uuid []byte
-			var c3 string
+			results := make(map[string]interface{})
+			err = rows.MapScan(results)
+			log.Infof("MapScan: %+v", results)
 
-			err = rows.Scan(&id, &uuid, &c3)
-			if err != nil {
-				panic(err)
+			for k, v := range results {
+				log.Infof("k: %v, v: %v, T: %T", k, v, v)
 			}
-			x <- id
+
+			//MapBytesToString(results)
+
+			for i, coltype := range coltypes {
+				log.Infof("coltype[%d]: %+v", i, coltype)
+
+				switch coltype.DatabaseTypeName() {
+				case "VARCHAR2", "VARCHAR", "CHAR", "TEXT", "NVARCHAR":
+					val := results[coltype.Name()]
+					x <- val
+				case "DECIMAL", "SMALLINT", "INT", "BIGINT":
+					val := int(results[coltype.Name()].(int))
+					x <- val
+				case "BOOL":
+				case "[]BIGINT":
+				case "TIMESTAMP", "DATE":
+				case "JSONB":
+					fallthrough
+				case "XML":
+					fallthrough
+				default:
+					log.Warn("whoa, I don't know how to deal with " + coltype.DatabaseTypeName() + " yet, column:" + coltype.Name() + ".")
+				}
+
+			}
+
+			// rows, err := DB.Query(`select * from t1`)
+			// if err != nil {
+			// 	panic(err)
+			// }
+			// defer rows.Close()
+
+			//for rows.Next() {
+
+			//var id = results["c1"]
+			//var uuid []byte = results["c2"]
+			//var c3 string = results["c3"]
+
+			//x <- id
 		}
 	},
 }
+
+func MapBytesToString(m map[string]interface{}) {
+	for k, v := range m {
+		if b, ok := v.([]byte); ok {
+			m[k] = string(b)
+		}
+	}
+}
+
+// func ScanTableMetadata(t string) {
+// 	rows, err := DB.Query(`select column_name, data_type from information_schema where table_name = ?`, t)
+// 	if err != nil {
+// 		panic(err)
+// 	}
+
+// 	defer rows.Close()
+
+// 	for rows.Next() {
+// 		var columnName string
+// 		var dataType string
+
+// 		err = rows.Scan(&columnName, &dataType)
+// 		if err != nil {
+// 			panic(err)
+// 		}
+// 		log.Infof("%v, %v", columnName, dataType)
+
+// 	}
+
+// }
 
 func init() {
 	RootCmd.AddCommand(setupCmd)
